@@ -1,9 +1,6 @@
 import React from "react";
 import ReactDOM from "react-dom/client";
-import App from "./app";
-
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-
 import {
   createNetworkConfig,
   SuiClientProvider,
@@ -12,6 +9,7 @@ import {
 
 import "@mysten/dapp-kit/dist/index.css";
 import "./style.css";
+import App from "./app";
 
 const queryClient = new QueryClient();
 

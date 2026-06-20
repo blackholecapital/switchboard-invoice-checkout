@@ -1,95 +1,284 @@
-import React, { useState } from "react";
-import { useCurrentAccount, useSignAndExecuteTransaction } from "@mysten/dapp-kit";
+import React, { useMemo, useState } from "react";
+import {
+  ConnectButton,
+  useCurrentAccount,
+  useSignAndExecuteTransaction,
+  useSuiClient,
+} from "@mysten/dapp-kit";
 import { Transaction } from "@mysten/sui/transactions";
+import {
+  CARD_CHECKOUT_URL,
+  DEFAULT_SUI_RECEIVER,
+  SUI_USDC_COIN_TYPE,
+  SUI_USDC_DECIMALS,
+} from "./config";
 
-const RECEIVER =
-  "0x1c72d3d74d9b06683935d9ae7077cb489833550cfbb75c4e0a1c16f35d86e440";
+type Method = "card" | "usdc" | "applepay" | "paypal" | "venmo" | "googlepay";
 
-export default function App() {
+function money(value: number) {
+  return new Intl.NumberFormat("en-US", {
+    style: "currency",
+    currency: "USD",
+  }).format(Number.isFinite(value) ? value : 0);
+}
+
+function shortAddress(address?: string) {
+  return address ? `${address.slice(0, 6)}...${address.slice(-4)}` : "";
+}
+
+function getParams() {
   const params = new URLSearchParams(window.location.search);
 
-  const invoice = params.get("invoice") || "INV-0001";
-  const amount = Number(params.get("amount") || 3);
+  const invoice = params.get("invoice") || params.get("invoiceNo") || "INV-0001";
+  const amount = Number(params.get("amount") || params.get("total") || "0");
+  const email = params.get("email") || "";
+  const customer = params.get("customer") || params.get("name") || "Customer";
+  const source = params.get("source") || "billing360";
+  const receiver = params.get("receiver") || DEFAULT_SUI_RECEIVER;
 
-  const [method, setMethod] = useState<"card" | "usdc">("card");
+  return { invoice, amount, email, customer, source, receiver };
+}
+
+export default function App() {
+  const initial = useMemo(getParams, []);
+  const [method, setMethod] = useState<Method>("card");
+  const [email, setEmail] = useState(initial.email);
+  const [notice, setNotice] = useState("");
+  const [busy, setBusy] = useState(false);
 
   const account = useCurrentAccount();
-  const sign = useSignAndExecuteTransaction();
+  const client = useSuiClient();
+  const signAndExecute = useSignAndExecuteTransaction();
 
-  const payCard = () => {
-    window.location.href =
-      "https://pay.xyz-labs.xyz/checkout/create?invoice=" +
-      invoice +
-      "&amount=" +
-      amount;
+  const cardCheckout = () => {
+    const params = new URLSearchParams({
+      invoice: initial.invoice,
+      amount: String(initial.amount),
+      email,
+      customer: initial.customer,
+      source: initial.source,
+    });
+
+    window.location.href = `${CARD_CHECKOUT_URL}?${params.toString()}`;
   };
 
- const payUSDC = async () => {
-  if (!account?.address) {
-    alert("Connect wallet first");
-    return;
-  }
+  const payWithSuiUsdc = async () => {
+    try {
+      setBusy(true);
+      setNotice("");
 
-  const tx = new Transaction();
+      if (!account?.address) {
+        throw new Error("Connect a Sui wallet first.");
+      }
 
-  const coinType =
-    "0xdba34672e30cb065b1f93e3ab55318768fd6fef66c15942c9f7cb846e2f900e7::usdc::USDC";
+      if (!initial.receiver) {
+        throw new Error("Receiving wallet is not configured.");
+      }
 
-  const amountRaw = BigInt(Math.round(amount * 1e6));
+      if (!initial.amount || initial.amount <= 0) {
+        throw new Error("Invoice amount is missing.");
+      }
 
-  const coins = await client.getCoins({
-    owner: account.address,
-    coinType,
-  });
+      const amountRaw = BigInt(
+        Math.round(Number(initial.amount || 0) * 10 ** SUI_USDC_DECIMALS)
+      );
 
-  if (!coins.data.length) {
-    alert("No USDC found");
-    return;
-  }
+      const coins = await client.getCoins({
+        owner: account.address,
+        coinType: SUI_USDC_COIN_TYPE,
+      });
 
-  const primary = tx.object(coins.data[0].coinObjectId);
+      if (!coins.data.length) {
+        throw new Error("No Sui USDC balance found in this wallet.");
+      }
 
-  if (coins.data.length > 1) {
-    tx.mergeCoins(
-      primary,
-      coins.data.slice(1).map((c) => tx.object(c.coinObjectId))
-    );
-  }
+      const balance = coins.data.reduce(
+        (sum, coin) => sum + BigInt(coin.balance),
+        0n
+      );
 
-  const [payment] = tx.splitCoins(primary, [
-    tx.pure.u64(amountRaw),
-  ]);
+      if (balance < amountRaw) {
+        throw new Error("Insufficient Sui USDC balance.");
+      }
 
-  tx.transferObjects([payment], RECEIVER);
+      const tx = new Transaction();
+      const primaryCoin = tx.object(coins.data[0].coinObjectId);
 
-  await sign.mutateAsync({
-    transaction: tx,
-  });
-};
+      if (coins.data.length > 1) {
+        tx.mergeCoins(
+          primaryCoin,
+          coins.data.slice(1).map((coin) => tx.object(coin.coinObjectId))
+        );
+      }
+
+      const [paymentCoin] = tx.splitCoins(primaryCoin, [tx.pure.u64(amountRaw)]);
+      tx.transferObjects([paymentCoin], tx.pure.address(initial.receiver));
+
+      const result = await signAndExecute.mutateAsync({
+        transaction: tx,
+      });
+
+      setNotice(`Sui USDC payment submitted. TX: ${(result as any)?.digest || "pending"}`);
+    } catch (error: any) {
+      setNotice(error?.message || "Sui USDC payment failed.");
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const payLabel =
+    method === "card"
+      ? "Pay with Card"
+      : method === "usdc"
+      ? `Pay ${money(initial.amount)} USDC on Sui`
+      : method === "applepay"
+      ? "Pay with Apple Pay"
+      : method === "googlepay"
+      ? "Pay with Google Pay"
+      : method === "paypal"
+      ? "Pay with PayPal"
+      : "Pay with Venmo";
 
   return (
-    <div className="wrap">
-      <div className="card">
-        <h1>Invoice {invoice}</h1>
-        <h2>${amount.toFixed(2)}</h2>
+    <main className="page">
+      <section className="checkout">
+        <article className="panel left-panel">
+          <div className="grow">
+            <h1>Payment request</h1>
+            <p className="subcopy">Fast card or Sui USDC checkout.</p>
 
-        <div className="row">
-          <button onClick={() => setMethod("card")}>Card</button>
-          <button onClick={() => setMethod("usdc")}>USDC</button>
-        </div>
+            <label>Email</label>
+            <input
+              value={email}
+              onChange={(event) => setEmail(event.target.value)}
+              placeholder="customer@example.com"
+              type="email"
+            />
 
-        {method === "card" && (
-          <button className="pay" onClick={payCard}>
-            Pay with Card
+            <div className="section-title">Payment requests</div>
+
+            <button className="request-card selected" type="button">
+              <span>
+                <b>{initial.invoice}</b>
+                <small>{initial.customer}</small>
+                <small>{email || "No email captured"} · open</small>
+                <small>ID: {initial.invoice}</small>
+              </span>
+              <strong>{money(initial.amount)}</strong>
+            </button>
+          </div>
+
+          <footer>Powered by PayMe</footer>
+        </article>
+
+        <article className="panel right-panel">
+          <h2>Summary</h2>
+
+          <div className="summary-row">
+            <span>{initial.customer || "Invoice payment"}</span>
+            <strong>{money(initial.amount)}</strong>
+          </div>
+          <div className="summary-row muted">
+            <span>Discount</span>
+            <span>- $0.00</span>
+          </div>
+          <div className="divider" />
+          <div className="total-row">
+            <span>Total</span>
+            <strong>{money(initial.amount)}</strong>
+          </div>
+
+          <label>Coupon</label>
+          <div className="coupon-row">
+            <input placeholder="Enter code" />
+            <button type="button">Apply</button>
+          </div>
+
+          <div className="section-title">Pay with</div>
+
+          <div className="wallet-grid top-methods">
+            <button
+              type="button"
+              className={method === "applepay" ? "active" : ""}
+              onClick={() => setMethod("applepay")}
+            >
+              Apple Pay
+            </button>
+            <button
+              type="button"
+              className={method === "paypal" ? "active" : ""}
+              onClick={() => setMethod("paypal")}
+            >
+              PayPal
+            </button>
+            <button
+              type="button"
+              className={method === "venmo" ? "active" : ""}
+              onClick={() => setMethod("venmo")}
+            >
+              Venmo
+            </button>
+            <button
+              type="button"
+              className={method === "googlepay" ? "active" : ""}
+              onClick={() => setMethod("googlepay")}
+            >
+              Google Pay
+            </button>
+            <button type="button" disabled>
+              More
+            </button>
+          </div>
+
+          <div className="wallet-grid main-methods">
+            <button
+              type="button"
+              className={method === "card" ? "active" : ""}
+              onClick={() => setMethod("card")}
+            >
+              💳 Card
+            </button>
+            <button
+              type="button"
+              className={method === "usdc" ? "active" : ""}
+              onClick={() => setMethod("usdc")}
+            >
+              <span className="coin-icon">$</span> USDC
+            </button>
+          </div>
+
+          {method === "usdc" ? (
+            <div className="sui-box">
+              <div className="sui-row">
+                <span>Network</span>
+                <strong>Sui Mainnet</strong>
+              </div>
+              <div className="sui-row">
+                <span>Wallet</span>
+                <strong>{account?.address ? shortAddress(account.address) : "Not connected"}</strong>
+              </div>
+              <div className="sui-row">
+                <span>Receiver</span>
+                <strong>{shortAddress(initial.receiver)}</strong>
+              </div>
+              {!account?.address ? <ConnectButton /> : null}
+            </div>
+          ) : null}
+
+          <button
+            className="pay-button"
+            type="button"
+            disabled={busy || signAndExecute.isPending}
+            onClick={method === "usdc" ? payWithSuiUsdc : cardCheckout}
+          >
+            {busy || signAndExecute.isPending ? "Processing..." : payLabel}
           </button>
-        )}
 
-        {method === "usdc" && (
-          <button className="pay" onClick={payUSDC}>
-            Pay with SUI Wallet (USDC)
-          </button>
-        )}
-      </div>
-    </div>
+          {notice ? <div className="notice">{notice}</div> : null}
+
+          <footer>Powered by PayMe</footer>
+        </article>
+      </section>
+    </main>
   );
 }

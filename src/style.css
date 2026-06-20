@@ -1,42 +1,266 @@
+:root {
+  font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  color: #0f172a;
+  background: #eef4fb;
+}
+
+* {
+  box-sizing: border-box;
+}
+
 body {
   margin: 0;
-  font-family: Inter, Arial;
-  background: #0b1220;
 }
 
-.wrap {
-  display: flex;
-  justify-content: center;
-  align-items: center;
+button,
+input {
+  font: inherit;
+}
+
+.page {
   min-height: 100vh;
+  padding: 28px;
+  display: grid;
+  place-items: center;
+  background:
+    linear-gradient(rgba(238, 244, 251, 0.82), rgba(238, 244, 251, 0.82)),
+    linear-gradient(90deg, rgba(47, 125, 246, 0.12) 1px, transparent 1px),
+    linear-gradient(rgba(47, 125, 246, 0.12) 1px, transparent 1px);
+  background-size: auto, 64px 64px, 64px 64px;
 }
 
-.card {
-  background: white;
+.checkout {
+  width: min(1050px, 100%);
+  display: grid;
+  grid-template-columns: 1.08fr 0.92fr;
+  gap: 24px;
+  align-items: stretch;
+}
+
+.panel {
+  background: #fff;
+  border-radius: 24px;
   padding: 24px;
-  border-radius: 20px;
-  width: 420px;
+  box-shadow: 0 4px 24px rgba(47, 125, 246, 0.1), 0 16px 40px rgba(10, 37, 64, 0.06);
+  display: flex;
+  flex-direction: column;
 }
 
-.row {
+.grow {
+  flex: 1;
+}
+
+h1 {
+  margin: 0;
+  font-size: 34px;
+  line-height: 1.1;
+  color: #2f7df6;
+}
+
+h2 {
+  margin: 0 0 18px;
+  font-size: 24px;
+  color: #2f7df6;
+}
+
+.subcopy {
+  margin: 18px 0 24px;
+  color: #5f6c7b;
+}
+
+label {
+  display: block;
+  margin: 18px 0 8px;
+  font-weight: 700;
+}
+
+input {
+  width: 100%;
+  padding: 14px 16px;
+  border: 1px solid #d5dce5;
+  border-radius: 14px;
+  outline: none;
+  background: #fff;
+}
+
+input:focus {
+  border-color: #2f7df6;
+}
+
+.section-title {
+  margin: 24px 0 12px;
+  font-weight: 800;
+}
+
+.request-card {
+  width: 100%;
+  min-height: 96px;
+  border: 2px solid #2f7df6;
+  border-radius: 16px;
+  padding: 16px;
+  background: #f8fbff;
   display: flex;
-  gap: 10px;
+  justify-content: space-between;
+  gap: 16px;
+  text-align: left;
+}
+
+.request-card b,
+.request-card small {
+  display: block;
+}
+
+.request-card small {
+  margin-top: 6px;
+  color: #64748b;
+}
+
+.summary-row,
+.total-row,
+.sui-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+}
+
+.summary-row {
+  margin: 8px 0;
+}
+
+.muted {
+  color: #64748b;
+}
+
+.divider {
+  height: 1px;
+  background: #dbe3ef;
   margin: 12px 0;
 }
 
-button {
-  padding: 10px 12px;
-  border-radius: 10px;
-  border: 1px solid #ddd;
+.total-row {
+  font-size: 22px;
+  font-weight: 900;
+  margin-bottom: 18px;
+}
+
+.coupon-row {
+  display: grid;
+  grid-template-columns: 1fr 74px;
+  gap: 8px;
+}
+
+.coupon-row button {
+  border: 0;
+  border-radius: 14px;
+  background: #2f7df6;
+  color: #fff;
+  font-weight: 800;
+}
+
+.wallet-grid {
+  display: grid;
+  gap: 8px;
+}
+
+.top-methods {
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+}
+
+.main-methods {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  margin-top: 10px;
+}
+
+.wallet-grid button {
+  min-height: 54px;
+  border: 1px solid #d5dce5;
+  border-radius: 14px;
+  background: #fff;
+  font-weight: 800;
   cursor: pointer;
 }
 
-.pay {
-  width: 100%;
-  margin-top: 15px;
-  padding: 14px;
-  background: #2563eb;
+.wallet-grid button.active {
+  border: 2px solid #2f7df6;
+  color: #0f172a;
+}
+
+.wallet-grid button:disabled {
+  color: #b5bdca;
+  cursor: not-allowed;
+  background: #f5f7fb;
+}
+
+.coin-icon {
+  display: inline-grid;
+  place-items: center;
+  width: 22px;
+  height: 22px;
+  margin-right: 6px;
+  border-radius: 999px;
+  background: #2f7df6;
   color: white;
-  border: none;
+  font-weight: 900;
+}
+
+.sui-box {
+  margin-top: 14px;
+  padding: 14px;
+  border: 1px solid #d5dce5;
+  border-radius: 16px;
+  background: #f8fbff;
+  display: grid;
+  gap: 8px;
+  font-size: 13px;
+}
+
+.sui-box strong {
+  word-break: break-all;
+}
+
+.pay-button {
+  width: 100%;
+  margin-top: 20px;
+  padding: 16px;
+  border: 0;
+  border-radius: 16px;
+  background: #2f7df6;
+  color: #fff;
+  font-weight: 900;
+  cursor: pointer;
+}
+
+.pay-button:disabled {
+  opacity: 0.6;
+  cursor: wait;
+}
+
+.notice {
+  margin-top: 14px;
+  color: #166534;
+  font-size: 14px;
   font-weight: 700;
+  word-break: break-word;
+}
+
+footer {
+  margin-top: 30px;
+  text-align: center;
+  color: #2f7df6;
+  font-size: 13px;
+}
+
+@media (max-width: 860px) {
+  .page {
+    padding: 14px;
+  }
+
+  .checkout {
+    grid-template-columns: 1fr;
+  }
+
+  .top-methods {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
 }
