@@ -14,6 +14,7 @@ import {
   DEFAULT_SUI_RECEIVER,
   SUI_USDC_COIN_TYPE,
   SUI_USDC_DECIMALS,
+  SWITCHBOARD_CRM_API,
 } from "./config";
 
 type Method = "card" | "usdc" | "applepay" | "paypal" | "venmo" | "googlepay";
@@ -46,6 +47,11 @@ function getParams() {
     pathInvoice ||
     "INV-0001";
 
+  const invoiceId =
+    params.get("id") ||
+    params.get("invoiceId") ||
+    invoice;
+
   const amount = Number(params.get("amount") || params.get("total") || "0");
   const email = params.get("email") || "";
   const customer = params.get("customer") || params.get("name") || "Customer";
@@ -55,7 +61,7 @@ function getParams() {
     params.get("wallet") ||
     DEFAULT_SUI_RECEIVER;
 
-  return { invoice, amount, email, customer, source, receiver };
+  return { invoice, invoiceId, amount, email, customer, source, receiver };
 }
 
 export default function App() {
@@ -63,6 +69,7 @@ export default function App() {
   const [method, setMethod] = useState<Method>("card");
 
   const [invoice, setInvoice] = useState(initial.invoice);
+  const [invoiceId, setInvoiceId] = useState(initial.invoiceId || initial.invoice);
   const [amount, setAmount] = useState(
     initial.amount > 0 ? String(initial.amount) : ""
   );
@@ -170,6 +177,44 @@ export default function App() {
       const result = await signAndExecute.mutateAsync({
         transaction: tx,
       });
+
+      const txDigest = result?.digest || "";
+      const callbackBase = SWITCHBOARD_CRM_API.replace(/\/$/, "");
+      const callbackInvoiceId = invoiceId || invoice;
+
+      if (txDigest && callbackInvoiceId) {
+        const confirmResponse = await fetch(
+          `${callbackBase}/invoices/${encodeURIComponent(callbackInvoiceId)}/mark-paid`,
+          {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+            },
+            body: JSON.stringify({
+              invoiceId: callbackInvoiceId,
+              invoiceNo: invoice,
+              txDigest,
+              payment_provider: "sui_usdc",
+              amount: amountNumber,
+              currency: "USD",
+              customer,
+              email,
+              payerWallet: account.address,
+              receiverWallet: receiver,
+              network: "sui-mainnet",
+              source: initial.source || "payme-checkout",
+              paidAt: new Date().toISOString(),
+            }),
+          }
+        );
+
+        if (!confirmResponse.ok) {
+          const text = await confirmResponse.text();
+          throw new Error(
+            `Payment submitted, but Switchboard confirmation failed: ${confirmResponse.status} ${text}`
+          );
+        }
+      }
 
       showNotice(
         `Sui USDC payment submitted. Invoice ${invoice}. TX: ${

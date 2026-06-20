@@ -11,3 +11,8 @@ export const DEFAULT_SUI_RECEIVER =
 export const CARD_CHECKOUT_URL =
   import.meta.env.VITE_CARD_CHECKOUT_URL ||
   "https://api.xyz-labs.xyz/checkout/create";
+
+
+export const SWITCHBOARD_CRM_API =
+  import.meta.env.VITE_SWITCHBOARD_CRM_API ||
+  "https://switchboard.xyz-labs.xyz/crm-api";
