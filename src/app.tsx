@@ -96,18 +96,59 @@ export default function App() {
     setNotice(message);
     setNoticeType(type);
   };
+const cardCheckout = async () => {
+  try {
+    setBusy(true);
 
-  const cardCheckout = () => {
-    const params = new URLSearchParams({
-      invoice,
-      amount: String(amountNumber),
-      email,
-      customer,
-      source: initial.source,
+    const response = await fetch(CARD_CHECKOUT_URL, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        checkout_id: invoiceId || invoice,
+        mode: "payment",
+
+        success_url:
+          "https://showroom.xyz-labs.xyz/checkout/success",
+
+        cancel_url:
+          "https://showroom.xyz-labs.xyz/cart",
+
+        callback_url:
+          "https://switchboard.xyz-labs.xyz/crm-api/invoices/mark-paid",
+
+        metadata: {
+          invoice_no: invoice,
+          source: initial.source || "billing360",
+        },
+
+        email,
+
+        line_items: [
+          {
+            product_id: invoice,
+            name: `Invoice ${invoice}`,
+            quantity: 1,
+            unit_amount: Math.round(amountNumber * 100),
+          },
+        ],
+      }),
     });
 
-    window.location.href = `${CARD_CHECKOUT_URL}?${params.toString()}`;
-  };
+    const data = await response.json();
+
+    if (!response.ok) {
+      throw new Error(data?.error || "Checkout creation failed");
+    }
+
+    window.location.href = data.redirect_url;
+  } catch (err: any) {
+    showNotice(err.message || "Card checkout failed", "error");
+  } finally {
+    setBusy(false);
+  }
+};
 
   const connectSpecificWallet = async (wallet: any) => {
     try {
