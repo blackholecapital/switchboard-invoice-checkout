@@ -24,21 +24,48 @@ export default function App() {
       amount;
   };
 
-  const payUSDC = async () => {
-    if (!account?.address) {
-      alert("Connect wallet first");
-      return;
-    }
+ const payUSDC = async () => {
+  if (!account?.address) {
+    alert("Connect wallet first");
+    return;
+  }
 
-    const tx = new Transaction();
+  const tx = new Transaction();
 
-    // simplified transfer (production version uses coin split)
-    tx.transferObjects([], RECEIVER);
+  const coinType =
+    "0xdba34672e30cb065b1f93e3ab55318768fd6fef66c15942c9f7cb846e2f900e7::usdc::USDC";
 
-    await sign.mutateAsync({
-      transaction: tx
-    });
-  };
+  const amountRaw = BigInt(Math.round(amount * 1e6));
+
+  const coins = await client.getCoins({
+    owner: account.address,
+    coinType,
+  });
+
+  if (!coins.data.length) {
+    alert("No USDC found");
+    return;
+  }
+
+  const primary = tx.object(coins.data[0].coinObjectId);
+
+  if (coins.data.length > 1) {
+    tx.mergeCoins(
+      primary,
+      coins.data.slice(1).map((c) => tx.object(c.coinObjectId))
+    );
+  }
+
+  const [payment] = tx.splitCoins(primary, [
+    tx.pure.u64(amountRaw),
+  ]);
+
+  tx.transferObjects([payment], RECEIVER);
+
+  await sign.mutateAsync({
+    transaction: tx,
+  });
+};
 
   return (
     <div className="wrap">
