@@ -1,86 +1,68 @@
 import React, { useState } from "react";
-import ReactDOM from "react-dom/client";
+import { useCurrentAccount, useSignAndExecuteTransaction } from "@mysten/dapp-kit";
+import { Transaction } from "@mysten/sui/transactions";
 
-const WALLET =
+const RECEIVER =
   "0x1c72d3d74d9b06683935d9ae7077cb489833550cfbb75c4e0a1c16f35d86e440";
 
-function App() {
+export default function App() {
   const params = new URLSearchParams(window.location.search);
 
   const invoice = params.get("invoice") || "INV-0001";
-  const amount = Number(params.get("amount") || 3).toFixed(2);
+  const amount = Number(params.get("amount") || 3);
 
   const [method, setMethod] = useState<"card" | "usdc">("card");
 
+  const account = useCurrentAccount();
+  const sign = useSignAndExecuteTransaction();
+
   const payCard = () => {
     window.location.href =
-      "/checkout/create?invoice=" +
-      encodeURIComponent(invoice) +
+      "https://pay.xyz-labs.xyz/checkout/create?invoice=" +
+      invoice +
       "&amount=" +
-      encodeURIComponent(amount);
+      amount;
   };
 
-  const payUSDC = () => {
-    window.location.href =
-      "/checkout/usdc?invoice=" +
-      encodeURIComponent(invoice) +
-      "&amount=" +
-      encodeURIComponent(amount);
+  const payUSDC = async () => {
+    if (!account?.address) {
+      alert("Connect wallet first");
+      return;
+    }
+
+    const tx = new Transaction();
+
+    // simplified transfer (production version uses coin split)
+    tx.transferObjects([], RECEIVER);
+
+    await sign.mutateAsync({
+      transaction: tx
+    });
   };
 
   return (
-    React.createElement(
-      "div",
-      {
-        style: {
-          display: "flex",
-          justifyContent: "center",
-          alignItems: "center",
-          minHeight: "100vh",
-          background: "#0b1220",
-        },
-      },
-      React.createElement(
-        "div",
-        {
-          style: {
-            background: "white",
-            padding: 24,
-            borderRadius: 16,
-            width: 420,
-          },
-        },
-        React.createElement("h1", null, "Invoice " + invoice),
-        React.createElement("h2", null, "$" + amount),
+    <div className="wrap">
+      <div className="card">
+        <h1>Invoice {invoice}</h1>
+        <h2>${amount.toFixed(2)}</h2>
 
-        React.createElement(
-          "button",
-          { onClick: () => setMethod("card") },
-          "Card"
-        ),
+        <div className="row">
+          <button onClick={() => setMethod("card")}>Card</button>
+          <button onClick={() => setMethod("usdc")}>USDC</button>
+        </div>
 
-        React.createElement(
-          "button",
-          { onClick: () => setMethod("usdc") },
-          "USDC"
-        ),
+        {method === "card" && (
+          <button className="pay" onClick={payCard}>
+            Pay with Card
+          </button>
+        )}
 
-        method === "card"
-          ? React.createElement(
-              "button",
-              { onClick: payCard },
-              "Pay with Card"
-            )
-          : React.createElement(
-              "button",
-              { onClick: payUSDC },
-              "Pay with USDC"
-            )
-      )
-    )
+        {method === "usdc" && (
+          <button className="pay" onClick={payUSDC}>
+            Pay with SUI Wallet (USDC)
+          </button>
+        )}
+      </div>
+    </div>
   );
-}
-
-export function renderApp(el: HTMLElement) {
-  ReactDOM.createRoot(el).render(React.createElement(App));
 }
