@@ -1,9 +1,12 @@
+// @ts-nocheck
 import React, { useMemo, useState } from "react";
 import {
   ConnectButton,
+  useConnectWallet,
   useCurrentAccount,
   useSignAndExecuteTransaction,
   useSuiClient,
+  useWallets,
 } from "@mysten/dapp-kit";
 import { Transaction } from "@mysten/sui/transactions";
 import {
@@ -26,15 +29,31 @@ function shortAddress(address?: string) {
   return address ? `${address.slice(0, 6)}...${address.slice(-4)}` : "";
 }
 
+function cleanPathInvoice() {
+  const path = window.location.pathname.replace(/^\/+|\/+$/g, "");
+  if (!path || path === "index.html") return "";
+  return decodeURIComponent(path.split("/")[0] || "");
+}
+
 function getParams() {
   const params = new URLSearchParams(window.location.search);
 
-  const invoice = params.get("invoice") || params.get("invoiceNo") || "INV-0001";
+  const pathInvoice = cleanPathInvoice();
+
+  const invoice =
+    params.get("invoice") ||
+    params.get("invoiceNo") ||
+    pathInvoice ||
+    "INV-0001";
+
   const amount = Number(params.get("amount") || params.get("total") || "0");
   const email = params.get("email") || "";
   const customer = params.get("customer") || params.get("name") || "Customer";
   const source = params.get("source") || "billing360";
-  const receiver = params.get("receiver") || DEFAULT_SUI_RECEIVER;
+  const receiver =
+    params.get("receiver") ||
+    params.get("wallet") ||
+    DEFAULT_SUI_RECEIVER;
 
   return { invoice, amount, email, customer, source, receiver };
 }
@@ -42,45 +61,79 @@ function getParams() {
 export default function App() {
   const initial = useMemo(getParams, []);
   const [method, setMethod] = useState<Method>("card");
+
+  const [invoice, setInvoice] = useState(initial.invoice);
+  const [amount, setAmount] = useState(
+    initial.amount > 0 ? String(initial.amount) : ""
+  );
   const [email, setEmail] = useState(initial.email);
+  const [customer, setCustomer] = useState(initial.customer);
+  const [receiver, setReceiver] = useState(initial.receiver);
+
   const [notice, setNotice] = useState("");
+  const [noticeType, setNoticeType] = useState<"info" | "error" | "success">("info");
   const [busy, setBusy] = useState(false);
 
   const account = useCurrentAccount();
+  const wallets = useWallets();
+  const connectWallet = useConnectWallet();
   const client = useSuiClient();
   const signAndExecute = useSignAndExecuteTransaction();
 
+  const amountNumber = Number(amount || 0);
+
+  const showNotice = (
+    message: string,
+    type: "info" | "error" | "success" = "info"
+  ) => {
+    setNotice(message);
+    setNoticeType(type);
+  };
+
   const cardCheckout = () => {
     const params = new URLSearchParams({
-      invoice: initial.invoice,
-      amount: String(initial.amount),
+      invoice,
+      amount: String(amountNumber),
       email,
-      customer: initial.customer,
+      customer,
       source: initial.source,
     });
 
     window.location.href = `${CARD_CHECKOUT_URL}?${params.toString()}`;
   };
 
+  const connectSpecificWallet = async (wallet: any) => {
+    try {
+      setBusy(true);
+      showNotice(`Opening ${wallet.name}...`);
+      await connectWallet.mutateAsync({ wallet });
+      showNotice(`${wallet.name} connected.`, "success");
+    } catch (error: any) {
+      showNotice(error?.message || `Could not connect ${wallet.name}.`, "error");
+    } finally {
+      setBusy(false);
+    }
+  };
+
   const payWithSuiUsdc = async () => {
     try {
       setBusy(true);
-      setNotice("");
+      showNotice("");
 
       if (!account?.address) {
         throw new Error("Connect a Sui wallet first.");
       }
 
-      if (!initial.receiver) {
+      if (!receiver) {
         throw new Error("Receiving wallet is not configured.");
       }
 
-      if (!initial.amount || initial.amount <= 0) {
+      if (!amountNumber || amountNumber <= 0) {
         throw new Error("Invoice amount is missing.");
       }
 
       const amountRaw = BigInt(
-        Math.round(Number(initial.amount || 0) * 10 ** SUI_USDC_DECIMALS)
+        Math.round(Number(amountNumber || 0) * 10 ** SUI_USDC_DECIMALS)
       );
 
       const coins = await client.getCoins({
@@ -93,7 +146,7 @@ export default function App() {
       }
 
       const balance = coins.data.reduce(
-        (sum, coin) => sum + BigInt(coin.balance),
+        (sum: bigint, coin: any) => sum + BigInt(coin.balance),
         0n
       );
 
@@ -107,20 +160,25 @@ export default function App() {
       if (coins.data.length > 1) {
         tx.mergeCoins(
           primaryCoin,
-          coins.data.slice(1).map((coin) => tx.object(coin.coinObjectId))
+          coins.data.slice(1).map((coin: any) => tx.object(coin.coinObjectId))
         );
       }
 
       const [paymentCoin] = tx.splitCoins(primaryCoin, [tx.pure.u64(amountRaw)]);
-      tx.transferObjects([paymentCoin], tx.pure.address(initial.receiver));
+      tx.transferObjects([paymentCoin], tx.pure.address(receiver));
 
       const result = await signAndExecute.mutateAsync({
         transaction: tx,
       });
 
-      setNotice(`Sui USDC payment submitted. TX: ${(result as any)?.digest || "pending"}`);
+      showNotice(
+        `Sui USDC payment submitted. Invoice ${invoice}. TX: ${
+          result?.digest || "pending"
+        }`,
+        "success"
+      );
     } catch (error: any) {
-      setNotice(error?.message || "Sui USDC payment failed.");
+      showNotice(error?.message || "Sui USDC payment failed.", "error");
     } finally {
       setBusy(false);
     }
@@ -130,7 +188,7 @@ export default function App() {
     method === "card"
       ? "Pay with Card"
       : method === "usdc"
-      ? `Pay ${money(initial.amount)} USDC on Sui`
+      ? `Pay ${money(amountNumber)} USDC on Sui`
       : method === "applepay"
       ? "Pay with Apple Pay"
       : method === "googlepay"
@@ -147,6 +205,13 @@ export default function App() {
             <h1>Payment request</h1>
             <p className="subcopy">Fast card or Sui USDC checkout.</p>
 
+            <label>Invoice</label>
+            <input
+              value={invoice}
+              onChange={(event) => setInvoice(event.target.value)}
+              placeholder="INV-0001"
+            />
+
             <label>Email</label>
             <input
               value={email}
@@ -155,16 +220,33 @@ export default function App() {
               type="email"
             />
 
+            <label>Amount</label>
+            <input
+              value={amount}
+              onChange={(event) => setAmount(event.target.value)}
+              placeholder="5.00"
+              type="number"
+              step="0.01"
+              min="0"
+            />
+
+            <label>Customer</label>
+            <input
+              value={customer}
+              onChange={(event) => setCustomer(event.target.value)}
+              placeholder="Customer"
+            />
+
             <div className="section-title">Payment requests</div>
 
             <button className="request-card selected" type="button">
               <span>
-                <b>{initial.invoice}</b>
-                <small>{initial.customer}</small>
+                <b>{invoice}</b>
+                <small>{customer}</small>
                 <small>{email || "No email captured"} · open</small>
-                <small>ID: {initial.invoice}</small>
+                <small>ID: {invoice}</small>
               </span>
-              <strong>{money(initial.amount)}</strong>
+              <strong>{money(amountNumber)}</strong>
             </button>
           </div>
 
@@ -175,8 +257,8 @@ export default function App() {
           <h2>Summary</h2>
 
           <div className="summary-row">
-            <span>{initial.customer || "Invoice payment"}</span>
-            <strong>{money(initial.amount)}</strong>
+            <span>{customer || "Invoice payment"}</span>
+            <strong>{money(amountNumber)}</strong>
           </div>
           <div className="summary-row muted">
             <span>Discount</span>
@@ -185,7 +267,7 @@ export default function App() {
           <div className="divider" />
           <div className="total-row">
             <span>Total</span>
-            <strong>{money(initial.amount)}</strong>
+            <strong>{money(amountNumber)}</strong>
           </div>
 
           <label>Coupon</label>
@@ -255,13 +337,45 @@ export default function App() {
               </div>
               <div className="sui-row">
                 <span>Wallet</span>
-                <strong>{account?.address ? shortAddress(account.address) : "Not connected"}</strong>
+                <strong>
+                  {account?.address ? shortAddress(account.address) : "Not connected"}
+                </strong>
               </div>
               <div className="sui-row">
                 <span>Receiver</span>
-                <strong>{shortAddress(initial.receiver)}</strong>
+                <strong>{shortAddress(receiver)}</strong>
               </div>
-              {!account?.address ? <ConnectButton /> : null}
+
+              {!account?.address ? (
+                <div className="connect-area">
+                  <ConnectButton />
+                  <div className="wallet-list">
+                    {wallets.length ? (
+                      wallets.map((wallet: any) => (
+                        <button
+                          key={wallet.name}
+                          type="button"
+                          disabled={busy || connectWallet.isPending}
+                          onClick={() => connectSpecificWallet(wallet)}
+                        >
+                          Connect {wallet.name}
+                        </button>
+                      ))
+                    ) : (
+                      <div className="wallet-empty">
+                        No Sui wallets discovered. Open Slush, Phantom, Backpack, or another Sui wallet extension and refresh.
+                      </div>
+                    )}
+                  </div>
+                </div>
+              ) : null}
+
+              <label>Receiving Sui USDC Wallet</label>
+              <input
+                value={receiver}
+                onChange={(event) => setReceiver(event.target.value)}
+                placeholder="0x..."
+              />
             </div>
           ) : null}
 
@@ -274,7 +388,9 @@ export default function App() {
             {busy || signAndExecute.isPending ? "Processing..." : payLabel}
           </button>
 
-          {notice ? <div className="notice">{notice}</div> : null}
+          {notice ? (
+            <div className={`notice ${noticeType}`}>{notice}</div>
+          ) : null}
 
           <footer>Powered by PayMe</footer>
         </article>

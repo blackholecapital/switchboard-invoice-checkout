@@ -2,22 +2,21 @@
 
 Use a real URL in downloaded/static invoices. A PDF/print window cannot call a React `onClick` handler.
 
-Generate the link like this:
-
 ```ts
 const invoiceCheckoutBase =
   import.meta.env.VITE_INVOICE_CHECKOUT_URL ||
   "https://switchboard-invoice-checkout.pages.dev";
 
 const invoiceCheckoutUrl =
-  `${invoiceCheckoutBase}/?invoice=${encodeURIComponent(invoiceNo)}` +
+  `${invoiceCheckoutBase}/${encodeURIComponent(invoiceNo)}` +
+  `?invoice=${encodeURIComponent(invoiceNo)}` +
   `&amount=${encodeURIComponent(String(total))}` +
   `&email=${encodeURIComponent(selectedCustomer?.email || "")}` +
   `&customer=${encodeURIComponent(entityName(selectedCustomer) || "")}` +
   `&source=billing360`;
 ```
 
-Then render the PDF Pay Now as:
+Render the PDF/static Pay Now as:
 
 ```tsx
 <a
@@ -28,4 +27,10 @@ Then render the PDF Pay Now as:
 >
   Pay Now
 </a>
+```
+
+Expected checkout URL:
+
+```text
+https://switchboard-invoice-checkout.pages.dev/INV-4510?invoice=INV-4510&amount=5&email=Albert.Einstein%40example.com&customer=Albert%20Einstein&source=billing360
 ```
