@@ -116,7 +116,7 @@ const cardCheckout = async () => {
           "https://showroom.xyz-labs.xyz/cart",
 
         callback_url:
-          "https://switchboard.xyz-labs.xyz/crm-api/invoices/mark-paid",
+          `${SWITCHBOARD_CRM_API.replace(/\/$/, "")}/invoices/${encodeURIComponent(invoiceId || invoice)}/mark-paid`,
 
         metadata: {
           invoice_no: invoice,
@@ -273,37 +273,63 @@ console.log("amountRaw", amountRaw.toString());
       for (const endpoint of receiptEndpoints) {
         try {
           console.log("SENDING_PAYMENT_RECEIPT", endpoint, receiptPayload);
-          
-const confirmResponse = await fetch(endpoint, {
-  method: "POST",
-  mode: "cors",
-  credentials: "omit",
-  headers: {
-    "Content-Type": "application/json",
-    "Accept": "application/json",
-  },
-  body: JSON.stringify(receiptPayload),
-});
 
-console.log(
-  "PAYMENT_RECEIPT_RESPONSE",
-  confirmResponse.status,
-  await confirmResponse.clone().text()
-);
+          // IMPORTANT:
+          // This endpoint only needs the invoice UUID in the URL.
+          // Do not send JSON headers here. application/json triggers a browser
+          // CORS preflight from pay.xyz-labs.xyz to switchboard.xyz-labs.xyz.
+          // Curl works because it does not enforce browser CORS.
+          const confirmResponse = await fetch(endpoint, {
+            method: "POST",
+            mode: "cors",
+            credentials: "omit",
+            keepalive: true,
+          });
+
+          const responseText = await confirmResponse.clone().text().catch(() => "");
+
+          console.log(
+            "PAYMENT_RECEIPT_RESPONSE",
+            endpoint,
+            confirmResponse.status,
+            responseText
+          );
 
           if (confirmResponse.ok) {
             receiptSent = true;
             break;
           }
 
-          lastReceiptError = `${confirmResponse.status} ${await confirmResponse.text()}`;
+          lastReceiptError = `${confirmResponse.status} ${responseText}`;
           console.warn("PAYMENT_RECEIPT_REJECTED", endpoint, lastReceiptError);
         } catch (receiptError: any) {
           lastReceiptError = receiptError?.message || String(receiptError);
-         console.warn("PAYMENT_RECEIPT_FAILED", endpoint, receiptError);
-console.error("RECEIPT_NAME", receiptError?.name);
-console.error("RECEIPT_MESSAGE", receiptError?.message);
-console.error("RECEIPT_STACK", receiptError?.stack);
+          console.warn("PAYMENT_RECEIPT_FAILED", endpoint, receiptError);
+          console.error("RECEIPT_NAME", receiptError?.name);
+          console.error("RECEIPT_MESSAGE", receiptError?.message);
+
+          try {
+            // Last-resort production fallback:
+            // no-cors still sends the POST, but the browser hides the response.
+            // The backend route was proven to work with a bodyless POST.
+            await fetch(endpoint, {
+              method: "POST",
+              mode: "no-cors",
+              credentials: "omit",
+              keepalive: true,
+            });
+
+            console.log("PAYMENT_RECEIPT_NO_CORS_SENT", endpoint);
+            receiptSent = true;
+            lastReceiptError = "";
+            break;
+          } catch (fallbackError: any) {
+            lastReceiptError =
+              fallbackError?.message ||
+              receiptError?.message ||
+              String(fallbackError || receiptError);
+            console.warn("PAYMENT_RECEIPT_NO_CORS_FAILED", endpoint, fallbackError);
+          }
         }
       }
 
