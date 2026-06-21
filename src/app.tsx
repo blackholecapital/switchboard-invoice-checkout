@@ -273,14 +273,23 @@ console.log("amountRaw", amountRaw.toString());
       for (const endpoint of receiptEndpoints) {
         try {
           console.log("SENDING_PAYMENT_RECEIPT", endpoint, receiptPayload);
+          
+const confirmResponse = await fetch(endpoint, {
+  method: "POST",
+  mode: "cors",
+  credentials: "omit",
+  headers: {
+    "Content-Type": "application/json",
+    "Accept": "application/json",
+  },
+  body: JSON.stringify(receiptPayload),
+});
 
-          const confirmResponse = await fetch(endpoint, {
-            method: "POST",
-            headers: {
-              "Content-Type": "application/json",
-            },
-            body: JSON.stringify(receiptPayload),
-          });
+console.log(
+  "PAYMENT_RECEIPT_RESPONSE",
+  confirmResponse.status,
+  await confirmResponse.clone().text()
+);
 
           if (confirmResponse.ok) {
             receiptSent = true;
@@ -291,7 +300,10 @@ console.log("amountRaw", amountRaw.toString());
           console.warn("PAYMENT_RECEIPT_REJECTED", endpoint, lastReceiptError);
         } catch (receiptError: any) {
           lastReceiptError = receiptError?.message || String(receiptError);
-          console.warn("PAYMENT_RECEIPT_FAILED", endpoint, receiptError);
+         console.warn("PAYMENT_RECEIPT_FAILED", endpoint, receiptError);
+console.error("RECEIPT_NAME", receiptError?.name);
+console.error("RECEIPT_MESSAGE", receiptError?.message);
+console.error("RECEIPT_STACK", receiptError?.stack);
         }
       }
 
