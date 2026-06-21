@@ -226,44 +226,84 @@ console.log("amountRaw", amountRaw.toString());
       const callbackBase = SWITCHBOARD_CRM_API.replace(/\/$/, "");
       const callbackInvoiceId = invoiceId || invoice;
 
-      if (txDigest && callbackInvoiceId) {
-        const confirmResponse = await fetch(
-          `${callbackBase}/invoices/${encodeURIComponent(callbackInvoiceId)}/mark-paid`,
-          {
+      if (!txDigest) {
+        throw new Error("Payment was signed, but no transaction digest was returned.");
+      }
+
+      const confirmedTx = await client.waitForTransaction({
+        digest: txDigest,
+        options: {
+          showEffects: true,
+          showBalanceChanges: true,
+        },
+      });
+
+      const receiptPayload = {
+        invoiceId: callbackInvoiceId,
+        invoiceNo: invoice,
+        invoice,
+        id: callbackInvoiceId,
+        status: "paid",
+        paid: true,
+        txDigest,
+        transactionDigest: txDigest,
+        digest: txDigest,
+        payment_provider: "sui_usdc",
+        provider: "sui_usdc",
+        method: "sui_usdc",
+        amount: amountNumber,
+        currency: "USDC",
+        customer,
+        email,
+        payerWallet: account.address,
+        receiverWallet: receiver,
+        network: "sui-mainnet",
+        source: initial.source || "payme-checkout",
+        paidAt: new Date().toISOString(),
+        transaction: confirmedTx,
+      };
+
+      const receiptEndpoints = [
+        `${callbackBase}/invoices/mark-paid`,
+        `${callbackBase}/invoices/${encodeURIComponent(callbackInvoiceId)}/mark-paid`,
+      ];
+
+      let receiptSent = false;
+      let lastReceiptError = "";
+
+      for (const endpoint of receiptEndpoints) {
+        try {
+          console.log("SENDING_PAYMENT_RECEIPT", endpoint, receiptPayload);
+
+          const confirmResponse = await fetch(endpoint, {
             method: "POST",
             headers: {
               "Content-Type": "application/json",
             },
-            body: JSON.stringify({
-              invoiceId: callbackInvoiceId,
-              invoiceNo: invoice,
-              txDigest,
-              payment_provider: "sui_usdc",
-              amount: amountNumber,
-              currency: "USD",
-              customer,
-              email,
-              payerWallet: account.address,
-              receiverWallet: receiver,
-              network: "sui-mainnet",
-              source: initial.source || "payme-checkout",
-              paidAt: new Date().toISOString(),
-            }),
-          }
-        );
+            body: JSON.stringify(receiptPayload),
+          });
 
-        if (!confirmResponse.ok) {
-          const text = await confirmResponse.text();
-          throw new Error(
-            `Payment submitted, but Switchboard confirmation failed: ${confirmResponse.status} ${text}`
-          );
+          if (confirmResponse.ok) {
+            receiptSent = true;
+            break;
+          }
+
+          lastReceiptError = `${confirmResponse.status} ${await confirmResponse.text()}`;
+          console.warn("PAYMENT_RECEIPT_REJECTED", endpoint, lastReceiptError);
+        } catch (receiptError: any) {
+          lastReceiptError = receiptError?.message || String(receiptError);
+          console.warn("PAYMENT_RECEIPT_FAILED", endpoint, receiptError);
         }
       }
 
+      if (!receiptSent) {
+        throw new Error(
+          `Payment succeeded on-chain, but receipt callback failed: ${lastReceiptError}`
+        );
+      }
+
       showNotice(
-        `Sui USDC payment submitted. Invoice ${invoice}. TX: ${
-          result?.digest || "pending"
-        }`,
+        `Sui USDC payment confirmed and receipt sent. Invoice ${invoice}. TX: ${txDigest}`,
         "success"
       );
    } catch (error: any) {
