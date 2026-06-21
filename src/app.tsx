@@ -183,12 +183,14 @@ const cardCheckout = async () => {
       const amountRaw = BigInt(
         Math.round(Number(amountNumber || 0) * 10 ** SUI_USDC_DECIMALS)
       );
-
+console.log("GET_COINS_START");
+console.log("owner", account.address);
+console.log("coinType", SUI_USDC_COIN_TYPE);
       const coins = await client.getCoins({
         owner: account.address,
         coinType: SUI_USDC_COIN_TYPE,
       });
-
+console.log("COINS", coins);
       if (!coins.data.length) {
         throw new Error("No Sui USDC balance found in this wallet.");
       }
@@ -214,7 +216,8 @@ const cardCheckout = async () => {
 
       const [paymentCoin] = tx.splitCoins(primaryCoin, [tx.pure.u64(amountRaw)]);
       tx.transferObjects([paymentCoin], tx.pure.address(receiver));
-
+console.log("SIGNING_TRANSACTION");
+console.log("amountRaw", amountRaw.toString());
       const result = await signAndExecute.mutateAsync({
         transaction: tx,
       });
@@ -263,9 +266,19 @@ const cardCheckout = async () => {
         }`,
         "success"
       );
-    } catch (error: any) {
-      showNotice(error?.message || "Sui USDC payment failed.", "error");
-    } finally {
+   } catch (error: any) {
+  console.error("PAYMENT_ERROR", error);
+
+  console.log("account", account?.address);
+  console.log("receiver", receiver);
+  console.log("amount", amount);
+  console.log("amountNumber", amountNumber);
+
+  showNotice(
+    error?.message || "Sui USDC payment failed.",
+    "error"
+  );
+} finally {
       setBusy(false);
     }
   };
