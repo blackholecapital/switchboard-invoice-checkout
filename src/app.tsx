@@ -65,7 +65,8 @@ function getParams() {
 }
 
 export default function App() {
-  const initial = useMemo(getParams, []);
+  const initial = useMemo(getParams, []);console.log("URL", window.location.href);
+console.log("INITIAL", initial);
   const [method, setMethod] = useState<Method>("card");
 
   const [invoice, setInvoice] = useState(initial.invoice);
