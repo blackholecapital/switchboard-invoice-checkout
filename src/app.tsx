@@ -263,10 +263,9 @@ console.log("amountRaw", amountRaw.toString());
         transaction: confirmedTx,
       };
 
-      const receiptEndpoints = [
-        `${callbackBase}/invoices/mark-paid`,
-        `${callbackBase}/invoices/${encodeURIComponent(callbackInvoiceId)}/mark-paid`,
-      ];
+     const receiptEndpoints = [
+  `${callbackBase}/invoices/${encodeURIComponent(callbackInvoiceId)}/mark-paid`,
+];
 
       let receiptSent = false;
       let lastReceiptError = "";
